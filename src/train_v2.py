@@ -136,7 +136,7 @@ def main():
 
     # Load teacher embeddings (frozen)
     print("Loading teacher embeddings...")
-    model.load_teacher_embeddings(args.teacher_weights)
+    model.load_teacher_embeddings(args.teacher_weights, device=device)
 
     trainable = model.count_params(trainable_only=True)
     total = model.count_params(trainable_only=False)

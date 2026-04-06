@@ -74,10 +74,10 @@ class DraftModelV2(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_normal_(p)
 
-    def load_teacher_embeddings(self, teacher_weights_path: str):
+    def load_teacher_embeddings(self, teacher_weights_path: str, device=None):
         """Load embedding weights from teacher safetensors."""
         from safetensors.torch import load_file
-        weights = load_file(teacher_weights_path)
+        weights = load_file(teacher_weights_path, device=str(device) if device else "cpu")
 
         # Text embedding
         text_key = "llm.embed_tokens.weight"
