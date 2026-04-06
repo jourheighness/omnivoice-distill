@@ -1,11 +1,6 @@
-"""Download LibriTTS-R dev-clean directly from OpenSLR.
-
-~300MB download, ~30 speakers, high quality 24kHz audio.
-"""
+"""Extract LibriTTS-R dev-clean with proper transcripts and speaker IDs."""
 
 import json
-import os
-import subprocess
 import tarfile
 from pathlib import Path
 
@@ -21,38 +16,39 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     tar_path = out / "dev-clean.tar.gz"
-
-    # Download from OpenSLR
     if not tar_path.exists():
-        url = "https://www.openslr.org/resources/141/dev_clean.tar.gz"
-        print(f"Downloading LibriTTS-R dev-clean from OpenSLR (~300MB)...")
-        subprocess.run(["curl", "-L", "-o", str(tar_path), url], check=True)
-    else:
-        print(f"Using cached {tar_path}")
+        print("No tar found. Download first.")
+        return
 
-    # Extract
-    print("Extracting...")
+    print(f"Extracting from {tar_path}...")
+
+    # First pass: index all files by stem
+    wavs = {}    # stem -> TarInfo
+    txts = {}    # stem -> TarInfo
+
     with tarfile.open(str(tar_path), "r:gz") as tar:
-        members = tar.getmembers()
-        wav_members = sorted([m for m in members if m.name.endswith(".wav")], key=lambda m: m.name)
-        txt_lookup = {}
-        for m in members:
-            if m.name.endswith(".normalized.txt"):
-                txt_lookup[m.name] = m
+        for m in tar.getmembers():
+            if m.name.endswith(".wav"):
+                stem = m.name.rsplit(".wav", 1)[0]
+                wavs[stem] = m
+            elif m.name.endswith(".normalized.txt"):
+                stem = m.name.rsplit(".normalized.txt", 1)[0]
+                txts[stem] = m
 
-        print(f"  Found {len(wav_members)} wav files")
+        # Match wav+txt pairs
+        paired_stems = sorted(set(wavs.keys()) & set(txts.keys()))
+        print(f"  Found {len(wavs)} wavs, {len(txts)} txts, {len(paired_stems)} paired")
 
+        n = min(args.num_samples, len(paired_stems))
         manifest = []
-        for i, wm in enumerate(wav_members):
-            if i >= args.num_samples:
-                break
 
-            # Matching transcript: same name but .normalized.txt
-            txt_name = wm.name.rsplit(".wav", 1)[0] + ".normalized.txt"
-            txt_member = txt_lookup.get(txt_name)
+        # Clean old files
+        for old in out.glob("sample_*.wav"):
+            old.unlink()
 
-            # Extract speaker from path: LibriTTS_R/dev-clean/SPEAKER/CHAPTER/file.wav
-            parts = wm.name.split("/")
+        for i, stem in enumerate(paired_stems[:n]):
+            # Extract speaker from path: .../SPEAKER_ID/CHAPTER/file
+            parts = stem.split("/")
             speaker_id = 0
             for p in parts:
                 if p.isdigit():
@@ -62,20 +58,16 @@ def main():
             # Extract wav
             fname = f"sample_{i:04d}.wav"
             fpath = out / fname
-            wf = tar.extractfile(wm)
+            wf = tar.extractfile(wavs[stem])
             if wf is None:
                 continue
             fpath.write_bytes(wf.read())
 
-            # Extract text
-            text = ""
-            if txt_member:
-                tf = tar.extractfile(txt_member)
-                if tf:
-                    text = tf.read().decode("utf-8").strip()
-
-            if not text:
-                text = f"Sample audio number {i} from speaker {speaker_id}."
+            # Extract transcript
+            tf = tar.extractfile(txts[stem])
+            if tf is None:
+                continue
+            text = tf.read().decode("utf-8").strip()
 
             manifest.append({
                 "id": i,
@@ -86,14 +78,17 @@ def main():
             })
 
             if (i + 1) % 200 == 0:
-                print(f"  {i+1}/{min(args.num_samples, len(wav_members))} extracted")
+                speakers_so_far = len(set(m["speaker_id"] for m in manifest))
+                print(f"  {i+1}/{n} extracted ({speakers_so_far} speakers)")
 
     with open(out / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
 
     speakers = set(m["speaker_id"] for m in manifest)
-    print(f"\nSaved {len(manifest)} samples, {len(speakers)} unique speakers to {out}/")
-    print(f"Avg text length: {sum(len(m['text']) for m in manifest)/len(manifest):.0f} chars")
+    avg_text = sum(len(m["text"]) for m in manifest) / max(len(manifest), 1)
+    print(f"\nDone: {len(manifest)} samples, {len(speakers)} speakers")
+    print(f"Avg text: {avg_text:.0f} chars")
+    print(f"Sample: '{manifest[0]['text'][:100]}'")
 
 
 if __name__ == "__main__":
