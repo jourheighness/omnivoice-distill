@@ -143,11 +143,8 @@ def main():
 
         except Exception as e:
             errors += 1
-            if errors <= 5:
+            if errors <= 3:
                 print(f"\n  Error on sample {i}: {e}")
-            if errors > 50:
-                print("Too many errors, stopping.")
-                break
             continue
 
     with open(output_dir / "manifest.json", "w") as f:
