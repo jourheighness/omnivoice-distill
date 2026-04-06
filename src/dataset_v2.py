@@ -26,13 +26,25 @@ class TeacherCacheDatasetV2(Dataset):
             self.manifest = json.load(f)
 
         self.samples = []
+        skipped = 0
         for entry in self.manifest:
-            data = np.load(self.cache_dir / entry["file"])
-            self.samples.append({
-                "cond_ids": data["cond_ids"].astype(np.int64),       # (C, L_cond)
-                "audio_mask": data["audio_mask"].astype(np.bool_),   # (L_cond,)
-                "cb0_tokens": data["cb0_tokens"].astype(np.int64),   # (T,)
-            })
+            try:
+                data = np.load(self.cache_dir / entry["file"])
+                cond = data["cond_ids"].astype(np.int64)
+                mask = data["audio_mask"].astype(np.bool_)
+                cb0 = data["cb0_tokens"].astype(np.int64)
+                # Validate
+                if cond.ndim != 2 or mask.ndim != 1 or cb0.ndim != 1:
+                    skipped += 1
+                    continue
+                if len(cb0) < 2 or cond.shape[1] != len(mask):
+                    skipped += 1
+                    continue
+                self.samples.append({"cond_ids": cond, "audio_mask": mask, "cb0_tokens": cb0})
+            except Exception:
+                skipped += 1
+        if skipped:
+            print(f"  Skipped {skipped} invalid samples")
 
     def __len__(self):
         return len(self.samples)
