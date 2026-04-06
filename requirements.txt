@@ -1,0 +1,8 @@
+torch>=2.2.0
+safetensors>=0.4.0
+numpy>=1.24.0
+tqdm
+pyyaml
+tensorboard
+huggingface-hub
+transformers

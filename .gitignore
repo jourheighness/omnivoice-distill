@@ -1,0 +1,14 @@
+cache_local/
+cache_real/
+cache/
+checkpoints_local/
+checkpoints/
+weights/
+runs/
+__pycache__/
+*.pyc
+*.npz
+*.safetensors
+*.pt
+.venv/
+.DS_Store
