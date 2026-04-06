@@ -74,7 +74,8 @@ def main():
 
     # Step 2: Load MLX teacher
     print("\nStep 2: Loading MLX teacher...")
-    from omnivoice_mlx.generate import OmniVoiceMLXConfig, OmniVoiceMLXModel, generate_iterative
+    from omnivoice_mlx.generate import OmniVoiceMLXConfig, OmniVoiceMLXModel
+    from generate_deterministic import generate_deterministic
 
     config = OmniVoiceMLXConfig()
     teacher = OmniVoiceMLXModel(config)
@@ -134,10 +135,9 @@ def main():
 
         try:
             # Generate with MLX teacher
-            mx.random.seed(i)
-            tokens = generate_iterative(
+            tokens = generate_deterministic(
                 teacher, input_ids, audio_mask, target_len,
-                num_step=args.num_step, guidance_scale=3.0,
+                num_step=args.num_step,
             )
             mx.eval(tokens)
 
