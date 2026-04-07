@@ -159,10 +159,32 @@ This is a much simpler prediction task that we've already shown is learnable.
 
 ## Infrastructure Notes
 
-- RunPod 5090 via Tailscale: `root@100.75.219.41` (SSH works from macbook)
+- RunPod 5090 via Tailscale: `root@100.75.219.41` (SSH works from macbook — Claude Code can drive it directly)
 - Mac Mini: `johannescarlsten@mac-mini` (Tailscale)
 - Tailscale funnel on Mac Mini for file serving (port 9999)
 - LibriTTS-R train-clean-360 extracted on RunPod: 116k files, 904 speakers
 - Manifest with 855 speakers: `data/libritts_big/manifest.json`
 - GitHub: `jourheighness/omnivoice-distill`
 - OmniVoice MLX weights on Mac Mini: `~/bartholomew/source/voice-service/weights/omnivoice_mlx/`
+
+### Running Everything via RunPod
+
+The PT→MLX framework gap means training AND inference should ideally happen on the same framework. For development/iteration, run everything on RunPod (PyTorch/CUDA):
+
+- **Caching:** `python3 src/cache_v2_real_api.py` — uses real `_generate_iterative` via GenerationTask API
+- **Training:** `python3 src/train_v2_kl.py` — KL distillation with soft targets
+- **Testing:** `python3 src/demo_pt.py` — end-to-end demo with real speech + audio output
+- **Voice encoding:** `python3 src/encode_voice.py barth_ref.wav` — encode any voice for inference
+- **Speaker manifest:** `python3 src/build_manifest.py --num_samples 5000` — index 904 speakers
+
+All scripts run on RunPod via SSH (`root@100.75.219.41`). Claude Code can SSH in directly and run everything without manual copy-paste.
+
+Install Tailscale on new pods:
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscaled --tun=userspace-networking &
+sleep 2
+tailscale up --authkey=YOUR_KEY
+```
+
+Only move to MLX once the approach is validated end-to-end on PyTorch. The v2 token-conditioning architecture makes the final PT→MLX conversion straightforward (just convert weights, embeddings are identical).
