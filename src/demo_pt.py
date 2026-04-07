@@ -86,10 +86,11 @@ def main():
     )
 
     task = GenerationTask(
+        batch_size=1,
         texts=[args.text],
         target_lens=[args.target_len],
-        languages=["English"],
-        instructions=["None"],
+        langs=["English"],
+        instructs=["None"],
         ref_audio_tokens=[ref_tokens],
         ref_texts=[prompt.ref_text],
         ref_rms=[getattr(prompt, 'ref_rms', 0.1)],
