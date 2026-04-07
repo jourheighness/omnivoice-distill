@@ -107,7 +107,18 @@ def main():
     print("\n--- Baseline (teacher, 8 steps) ---")
     t0 = time.perf_counter()
     with torch.no_grad():
-        baseline_tokens = _run_unmasking_loop(teacher, input_ids, audio_mask, args.target_len, num_step=8)
+        # Use the SAME method as cache_v2.py: try _generate_iterative first
+        try:
+            baseline_tokens = teacher._generate_iterative(
+                input_ids=input_ids, audio_mask=audio_mask,
+                target_len=args.target_len, num_step=8,
+            )
+            if isinstance(baseline_tokens, torch.Tensor) and baseline_tokens.dim() == 3:
+                baseline_tokens = baseline_tokens[0]
+            print("  (used _generate_iterative)")
+        except Exception as e:
+            print(f"  _generate_iterative failed: {e}, using fallback")
+            baseline_tokens = _run_unmasking_loop(teacher, input_ids, audio_mask, args.target_len, num_step=8)
     torch.cuda.synchronize()
     baseline_ms = (time.perf_counter() - t0) * 1000
     baseline_cb0 = baseline_tokens[0].cpu().numpy()  # (target_len,)
