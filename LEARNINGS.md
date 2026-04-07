@@ -1,4 +1,87 @@
-# OmniVoice Speculative Decode Distillation — Learnings
+# OmniVoice Fast TTS Pipeline — Learnings
+
+## Final Production Pipeline (2026-04-07)
+
+### The Full Stack
+1. **Voice calibration** from ref audio (Whisper word timestamps → chars/sec)
+2. **Frame-budget splitting** at sentence boundaries (80-280 frames per group)
+3. **Tight frame allocation** (padding=0.95 — under-allocate, halves repeat artifacts)
+4. **Adaptive steps** (8 for first group TTFA, 16 for rest)
+5. **CFG scheduling** `[0,0,3,3,...,3]` (skip CFG on steps 0-1)
+6. **Correct ref_text** (Whisper transcript of ref audio, NOT placeholder)
+7. **Assembly** (RMS norm + 40ms silence + 30ms crossfade + trailing silence trim)
+
+### Results
+- TTFA: 170-340ms (GPU), est ~600ms (MLX)
+- RTF: 0.030 (33x realtime on 5090)
+- WER: 8-10% across voices
+- Repeat rate: 5.2% (was 9.6% with old padding)
+- torch.compile: additional 4.4x speedup
+
+---
+
+## CFG Scheduling Discovery (2026-04-07)
+
+### The Breakthrough
+Skipping CFG on early iterative steps gives **free speedup + better quality**. CFG on steps 0-1 actively destabilizes initial structure. Late-step CFG polishes quality.
+
+**Best config: `[0,0,3,3,3,3,3,3]`** — 14 fwd passes (vs 16), 5% WER (vs 13%). No audible quality loss.
+
+### Voice Calibration
+Measuring actual speaking rate from ref audio eliminates manual cpf tuning:
+- Whisper word timestamps → chars_per_sec per voice
+- Frame count = text_chars / chars_per_sec * fps * 0.95
+- Slow voices (Astarion 12.7 c/s) auto-get more frames than fast voices (Barth 17.4 c/s)
+- Sweet spot density: 0.08-0.10 words/frame
+
+### Tight Frame Allocation
+Padding=0.95 (under-allocate 5%) is better than over-allocating:
+- Model compresses speech naturally when given slightly less space
+- Over-allocation causes fill artifacts (ssssss, repetitions)
+- Repeats dropped from 9.6% to 5.2%
+
+### Adaptive Steps
+- Group 0 at 8 steps: fast TTFA (~200ms GPU)
+- Groups 1+ at 16 steps: better quality, generated while group 0 plays
+- Seamless transition — no audible quality difference at boundary
+- Diminishing returns past 16 steps
+
+### Sentence Length Window
+- Floor: ~60 frames / 10 words (below = quality degrades)
+- Ceiling: ~280 frames / 45 words
+- Sweet spot: 80-200 frames / 15-35 words
+
+Aggressive: `[0,0,0,0,0,0,7,7]` — 10 fwd passes, 6% WER. Slight degradation on late-sentence words. Higher cfg strength (7) partially compensates for fewer guided steps.
+
+### Critical Fix: ref_text
+All earlier experiments used `ref_text="Reference audio."` — WRONG. The model concatenates ref_text + target_text in the text prompt. Wrong ref_text causes the model to speak the ref_text as a prefix. Fix: Whisper-transcribe the actual ref audio, pass that as ref_text. This alone dropped 8-step WER from 69% to 13%.
+
+### CFG Stability Analysis
+CFG causes prediction flip-flops between steps (380-500 flips at 8 steps with CFG vs 197 without). Removing CFG:
+- Cuts flip-flops by 60%
+- 28% of positions stabilize before final step (vs 11% with CFG)
+- But even without CFG, 72% of positions still only stabilize at the final step
+
+### Step/Quality Curve (correct ref_text, cfg=3)
+| Steps | WER | Fwd passes | GPU time |
+|-|-|-|-|
+| 4 | 23% | 8 | 0.19s |
+| 8 | 13% | 16 | 0.26s |
+| 12 | 6% | 24 | 0.35s |
+| 24 | 4% | 48 | 0.62s |
+
+### CFG Crossover Sweep
+| Schedule | Fwd | WER | Notes |
+|-|-|-|-|
+| `[3,3,3,3,3,3,3,3]` | 16 | 13% | Baseline |
+| `[0,3,3,3,3,3,3,3]` | 15 | 10% | |
+| `[0,0,3,3,3,3,3,3]` | 14 | 5% | **Best quality** |
+| `[0,0,0,3,3,3,3,3]` | 13 | 5% | Tied |
+| `[0,0,0,0,0,3,3,3]` | 11 | 9% | |
+| `[0,0,0,0,0,0,7,7]` | 10 | 6% | **Best speed/quality** |
+| `[0,0,0,0,0,0,0,0]` | 8 | 11% | Audibly worse |
+
+---
 
 ## What We Tried (2026-04-06/07)
 
