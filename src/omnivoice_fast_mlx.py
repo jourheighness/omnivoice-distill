@@ -38,7 +38,7 @@ from omnivoice_mlx.vocoder import AudioTokenizerDecoder
 
 VOICE_CALIBRATIONS = {
     "barth": {"chars_per_sec": 17.4, "words_per_sec": 3.5},
-    "astarion": {"chars_per_sec": 12.7, "words_per_sec": 2.8},
+    "astarion": {"chars_per_sec": 13.0, "words_per_sec": 2.6},
     "vesper": {"chars_per_sec": 18.1, "words_per_sec": 4.2},
 }
 
@@ -46,20 +46,31 @@ VOICE_CALIBRATIONS = {
 _DEFAULT_CALIBRATION = {"chars_per_sec": 15.0, "words_per_sec": 3.0}
 
 
-def calibrate_from_ref(ref_text: str, num_ref_frames: int, fps: int = 25) -> dict:
+def calibrate_from_ref(ref_text: str, num_ref_frames: int, voice_name: str = "", fps: int = 25) -> dict:
     """Auto-calibrate voice speaking rate from ref audio metadata.
 
-    No Whisper needed — we derive chars_per_sec from the ref_text length
-    and the number of audio frames (at 25fps) the encoder produced.
+    Uses Whisper-validated calibrations when available (more accurate —
+    they exclude pauses). Falls back to naive estimation from ref_text/frames
+    with a 0.8x correction factor (ref audio typically has pauses that inflate
+    the naive rate).
     """
+    # Prefer Whisper-validated calibrations
+    for key in VOICE_CALIBRATIONS:
+        if key in voice_name.lower():
+            return dict(VOICE_CALIBRATIONS[key])
+
     if not ref_text or num_ref_frames <= 0:
         return dict(_DEFAULT_CALIBRATION)
+
     duration_sec = num_ref_frames / fps
     chars = len(ref_text.strip())
     words = len(ref_text.strip().split())
+    # 0.8x correction: naive calc overestimates because ref audio has pauses
+    # that the text doesn't account for. Better to allocate too many frames
+    # (slight silence) than too few (clipping/popping).
     return {
-        "chars_per_sec": chars / max(duration_sec, 0.1),
-        "words_per_sec": words / max(duration_sec, 0.1),
+        "chars_per_sec": chars / max(duration_sec, 0.1) * 0.8,
+        "words_per_sec": words / max(duration_sec, 0.1) * 0.8,
     }
 
 
