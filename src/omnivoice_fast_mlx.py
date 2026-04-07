@@ -42,6 +42,26 @@ VOICE_CALIBRATIONS = {
     "vesper": {"chars_per_sec": 18.1, "words_per_sec": 4.2},
 }
 
+# Default fallback for unknown voices
+_DEFAULT_CALIBRATION = {"chars_per_sec": 15.0, "words_per_sec": 3.0}
+
+
+def calibrate_from_ref(ref_text: str, num_ref_frames: int, fps: int = 25) -> dict:
+    """Auto-calibrate voice speaking rate from ref audio metadata.
+
+    No Whisper needed — we derive chars_per_sec from the ref_text length
+    and the number of audio frames (at 25fps) the encoder produced.
+    """
+    if not ref_text or num_ref_frames <= 0:
+        return dict(_DEFAULT_CALIBRATION)
+    duration_sec = num_ref_frames / fps
+    chars = len(ref_text.strip())
+    words = len(ref_text.strip().split())
+    return {
+        "chars_per_sec": chars / max(duration_sec, 0.1),
+        "words_per_sec": words / max(duration_sec, 0.1),
+    }
+
 
 # ---------------------------------------------------------------------------
 # Text splitting (same as GPU version)
