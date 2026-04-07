@@ -249,12 +249,7 @@ def generate_fast(
     # --- Generate all tokens at once ---
     # Auto-scale steps: short sequences need fewer, long ones need more
     if num_steps == 0:  # auto
-        if total_frames <= 100:
-            num_steps = 4
-        elif total_frames <= 200:
-            num_steps = 6
-        else:
-            num_steps = 8
+        num_steps = 12
     cfg_schedule = [0.0] * min(cfg_skip, num_steps) + [cfg_val] * max(0, num_steps - cfg_skip)
 
     t_gen_start = time.perf_counter()

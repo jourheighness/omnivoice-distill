@@ -18,3 +18,6 @@ __pycache__/
 data/
 cache_*/
 test_output/
+fast_mlx_output/
+audio_samples/
+quality_check.py
